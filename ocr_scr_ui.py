@@ -57,7 +57,7 @@ def init_worker(lock):
 class OcrApp(tk.Tk):
     def __init__(self):
         tk.Tk.__init__(self)
-        self.title("OCR Application")
+        self.title("batchOCR by Consertis GmbH")
         self.geometry("1000x700")
         self.configure(bg="#f0f0f0")
         self.source_folders = []
@@ -98,7 +98,7 @@ class OcrApp(tk.Tk):
         main_frame.columnconfigure(1, weight=1)
 
         # Header
-        header = ttk.Label(main_frame, text="OCR Anwendung", font=("Segoe UI", 18, "bold"))
+        header = ttk.Label(main_frame, text="batchOCR", font=("Segoe UI", 18, "bold"))
         header.grid(row=0, column=0, columnspan=3, pady=(0,20))
 
         # Quellordner-Bereich
@@ -127,20 +127,27 @@ class OcrApp(tk.Tk):
         self.target_entry.grid(row=0, column=0, sticky="ew")
         ttk.Button(target_frame, text="📂 Durchsuchen", command=self.browse_target).grid(row=0, column=1, padx=5)
 
-        # Optionen
-        ttk.Checkbutton(main_frame, text="Unterordner integrieren", variable=self.include_subfolders).grid(row=6, column=0, sticky="w", pady=5)
-        ttk.Checkbutton(main_frame, text="Interne Parallelisierung aktivieren", variable=self.use_internal_parallelism).grid(row=7, column=0, sticky="w", pady=5)
-        ttk.Checkbutton(main_frame, text="Logfile erstellen", variable=self.logfile_enabled).grid(row=8, column=0, sticky="w", pady=5)
+        # Optionen Dropdown
+        self.options_menubutton = ttk.Menubutton(main_frame, text="🔧 Optionen", direction="below")
+        self.options_menu = tk.Menu(self.options_menubutton, tearoff=0)
+        self.options_menubutton["menu"] = self.options_menu
+
+        self.options_menu.add_checkbutton(label="Unterordner integrieren", variable=self.include_subfolders)
+        self.options_menu.add_checkbutton(label="Interne Parallelisierung aktivieren", variable=self.use_internal_parallelism)
+        self.options_menu.add_checkbutton(label="Logfile erstellen", variable=self.logfile_enabled)
+
+        self.options_menubutton.grid(row=6, column=0, columnspan=3, pady=5)
+
 
         # Fortschrittsanzeige
         self.progress_label = ttk.Label(main_frame, text="Noch nicht gestartet")
-        self.progress_label.grid(row=9, column=0, columnspan=3, pady=20)
+        self.progress_label.grid(row=8, column=0, columnspan=3, pady=20)
         self.progress_bar = ttk.Progressbar(main_frame, orient="horizontal", length=800, mode="determinate", style="Horizontal.TProgressbar")
-        self.progress_bar.grid(row=10, column=0, columnspan=3, pady=10)
+        self.progress_bar.grid(row=9, column=0, columnspan=3, pady=10)
 
         # Steuerungsbuttons
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=11, column=0, columnspan=3, pady=20)
+        btn_frame.grid(row=10, column=0, columnspan=3, pady=20)
         self.start_button = ttk.Button(btn_frame, text="🚀 Start", command=self.start_processing)
         self.start_button.grid(row=0, column=0, padx=10)
         self.stop_button = ttk.Button(btn_frame, text="🛑 Stop", command=self.stop_processing, state="disabled")
