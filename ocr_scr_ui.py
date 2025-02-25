@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 import tkfilebrowser
+import tkinter.font as tkfont
 
 # Globaler Lock für Log-Schreibzugriffe
 LOG_LOCK = None
@@ -57,7 +58,8 @@ class OcrApp(tk.Tk):
     def __init__(self):
         tk.Tk.__init__(self)
         self.title("OCR Application")
-        self.geometry("700x400")
+        self.geometry("1000x700")
+        self.configure(bg="#f0f0f0")
         self.source_folders = []
         self.target_folder = ""
         self.include_subfolders = tk.BooleanVar(value=True)
@@ -71,50 +73,81 @@ class OcrApp(tk.Tk):
         self.processing = False
         self.start_time = None
         self.log_file_path = ""
-        self.last_folder = os.path.expanduser("~")  # Startet im Home-Verzeichnis
+        self.last_folder = os.path.expanduser("~")
+        self.set_styles()
         self.create_widgets()
 
+    def set_styles(self):
+        """Setzt ein modernes Theme und angepasste Fonts für ttk-Widgets."""
+        style = ttk.Style(self)
+        style.theme_use("xpnative")
+        default_font = tkfont.nametofont("TkDefaultFont")
+        default_font.configure(family="Segoe UI", size=11)
+        style.configure("TLabel", font=("Segoe UI", 11), background="#f0f0f0")
+        style.configure("TButton", font=("Segoe UI", 11))
+        style.configure("TEntry", font=("Segoe UI", 11))
+        style.configure("TCheckbutton", font=("Segoe UI", 11), background="#f0f0f0")
+        style.configure("Horizontal.TProgressbar", thickness=20)
+        self.lb_font = tkfont.Font(family="Segoe UI", size=11)
+
     def create_widgets(self):
-        frame = tk.Frame(self)
-        frame.pack(pady=10)
+        main_frame = ttk.Frame(self, padding="20 20 20 20")
+        main_frame.pack(fill="both", expand=True)
 
-        tk.Label(frame, text="Quellordner:").grid(row=0, column=0, sticky="w")
+        # Konfigurieren der Spalten: Die Spalte mit den Eingabefeldern erhält Gewicht
+        main_frame.columnconfigure(1, weight=1)
 
-        # Listbox für Quellordner mit Scrollbar
-        self.source_listbox = tk.Listbox(frame, height=4, width=50, selectmode=tk.EXTENDED)
-        self.source_listbox.grid(row=0, column=1, padx=5)
+        # Header
+        header = ttk.Label(main_frame, text="OCR Anwendung", font=("Segoe UI", 18, "bold"))
+        header.grid(row=0, column=0, columnspan=3, pady=(0,20))
 
-        scrollbar = tk.Scrollbar(frame, orient="vertical")
-        scrollbar.config(command=self.source_listbox.yview)
+        # Quellordner-Bereich
+        ttk.Label(main_frame, text="📂 Quellordner:").grid(row=1, column=0, sticky="w")
+        # Listbox und Scrollbar in einem eigenen Frame
+        source_frame = ttk.Frame(main_frame)
+        source_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
+        source_frame.columnconfigure(0, weight=1)
+        self.source_listbox = tk.Listbox(source_frame, height=6, width=80, selectmode=tk.EXTENDED, font=self.lb_font)
+        self.source_listbox.grid(row=0, column=0, sticky="ew")
+        scrollbar = ttk.Scrollbar(source_frame, orient="vertical", command=self.source_listbox.yview)
         self.source_listbox.config(yscrollcommand=scrollbar.set)
-        scrollbar.grid(row=0, column=2, sticky="ns")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        # Button-Frame direkt unterhalb der Listbox – rechte Ausrichtung
+        src_btn_frame = ttk.Frame(main_frame)
+        src_btn_frame.grid(row=3, column=0, columnspan=3, sticky="e", pady=5)
+        ttk.Button(src_btn_frame, text="➕ Hinzufügen", command=self.browse_source).pack(side="left", padx=5)
+        ttk.Button(src_btn_frame, text="❌ Entfernen", command=self.remove_source_folder).pack(side="left", padx=5)
 
-        tk.Button(frame, text="Browse", command=self.browse_source).grid(row=0, column=3)
-        tk.Button(frame, text="Ordner entfernen", command=self.remove_source_folder).grid(row=0, column=4)
+        # Zielordner-Bereich
+        ttk.Label(main_frame, text="📁 Zielordner:").grid(row=4, column=0, sticky="w", pady=(20,0))
+        target_frame = ttk.Frame(main_frame)
+        target_frame.grid(row=5, column=0, columnspan=3, sticky="ew")
+        target_frame.columnconfigure(0, weight=1)
+        self.target_entry = ttk.Entry(target_frame, width=80)
+        self.target_entry.grid(row=0, column=0, sticky="ew")
+        ttk.Button(target_frame, text="📂 Durchsuchen", command=self.browse_target).grid(row=0, column=1, padx=5)
 
-        tk.Label(frame, text="Zielordner:").grid(row=1, column=0, sticky="w")
-        self.target_entry = tk.Entry(frame, width=50)
-        self.target_entry.grid(row=1, column=1, padx=5)
-        tk.Button(frame, text="Browse", command=self.browse_target).grid(row=1, column=2)
+        # Optionen
+        ttk.Checkbutton(main_frame, text="Unterordner integrieren", variable=self.include_subfolders).grid(row=6, column=0, sticky="w", pady=5)
+        ttk.Checkbutton(main_frame, text="Interne Parallelisierung aktivieren", variable=self.use_internal_parallelism).grid(row=7, column=0, sticky="w", pady=5)
+        ttk.Checkbutton(main_frame, text="Logfile erstellen", variable=self.logfile_enabled).grid(row=8, column=0, sticky="w", pady=5)
 
-        tk.Checkbutton(frame, text="Unterordner integrieren", variable=self.include_subfolders).grid(row=2, column=1, sticky="w", pady=5)
-        tk.Checkbutton(frame, text="Interne Parallelisierung aktivieren", variable=self.use_internal_parallelism).grid(row=3, column=1, sticky="w", pady=5)
-        tk.Checkbutton(frame, text="Logfile erstellen", variable=self.logfile_enabled).grid(row=4, column=1, sticky="w", pady=5)
+        # Fortschrittsanzeige
+        self.progress_label = ttk.Label(main_frame, text="Noch nicht gestartet")
+        self.progress_label.grid(row=9, column=0, columnspan=3, pady=20)
+        self.progress_bar = ttk.Progressbar(main_frame, orient="horizontal", length=800, mode="determinate", style="Horizontal.TProgressbar")
+        self.progress_bar.grid(row=10, column=0, columnspan=3, pady=10)
 
-        self.progress_label = tk.Label(self, text="Noch nicht gestartet")
-        self.progress_label.pack(pady=10)
-        self.progress_bar = ttk.Progressbar(self, orient="horizontal", length=500, mode="determinate")
-        self.progress_bar.pack(pady=5)
-
-        button_frame = tk.Frame(self)
-        button_frame.pack(pady=10)
-        self.start_button = tk.Button(button_frame, text="Start", command=self.start_processing)
-        self.start_button.grid(row=0, column=0, padx=5)
-        self.stop_button = tk.Button(button_frame, text="Stop", command=self.stop_processing, state="disabled")
-        self.stop_button.grid(row=0, column=1, padx=5)
+        # Steuerungsbuttons
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.grid(row=11, column=0, columnspan=3, pady=20)
+        self.start_button = ttk.Button(btn_frame, text="🚀 Start", command=self.start_processing)
+        self.start_button.grid(row=0, column=0, padx=10)
+        self.stop_button = ttk.Button(btn_frame, text="🛑 Stop", command=self.stop_processing, state="disabled")
+        self.stop_button.grid(row=0, column=1, padx=10)
 
     def browse_source(self):
-        """Ermöglicht die Auswahl mehrerer Quellordner und speichert den zuletzt ausgewählten Ordner."""
+        """Ermöglicht die Auswahl mehrerer Quellordner via tkfilebrowser."""
         folders = tkfilebrowser.askopendirnames(
             title="Wählen Sie Quellordner aus",
             initialdir=self.last_folder,
@@ -124,28 +157,27 @@ class OcrApp(tk.Tk):
             for folder in folders:
                 if folder not in self.source_listbox.get(0, tk.END):
                     self.source_listbox.insert(tk.END, folder)
-            self.last_folder = os.path.dirname(folders[-1])  # Speichert den Ordner des letzten ausgewählten Ordners
+            self.last_folder = os.path.dirname(folders[-1])
 
     def remove_source_folder(self):
         """Entfernt die ausgewählten Ordner aus der Listbox."""
         selected = self.source_listbox.curselection()
-        for index in selected[::-1]:  # Rückwärts, um Indizes korrekt zu löschen
+        for index in selected[::-1]:
             self.source_listbox.delete(index)
 
     def browse_target(self):
-        """Wählt einen Zielordner und speichert den letzten Ordner."""
+        """Wählt einen Zielordner und speichert den zuletzt verwendeten Ordner."""
         folder = filedialog.askdirectory(title="Zielordner wählen", initialdir=self.last_folder)
         if folder:
             self.target_folder = folder
             self.target_entry.delete(0, tk.END)
             self.target_entry.insert(0, folder)
-            self.last_folder = folder  # Aktualisiert den letzten Ordner
+            self.last_folder = folder
 
     def get_pdf_files(self):
         """Sammelt alle PDF-Dateien aus den ausgewählten Quellordnern."""
         pdf_files = []
         self.source_folders = self.source_listbox.get(0, tk.END)
-        
         for source_folder in self.source_folders:
             if not os.path.isdir(source_folder):
                 continue
@@ -174,7 +206,6 @@ class OcrApp(tk.Tk):
     def start_processing(self):
         """Startet die OCR-Verarbeitung für alle ausgewählten Ordner."""
         self.source_folders = self.source_listbox.get(0, tk.END)
-        
         if not self.source_folders or not self.target_folder:
             messagebox.showerror("Fehler", "Bitte wählen Sie mindestens einen Quellordner und einen Zielordner aus.")
             return
@@ -209,7 +240,7 @@ class OcrApp(tk.Tk):
             res = self.pool.apply_async(
                 process_pdf,
                 args=(args[0], args[1], self.use_internal_parallelism.get(),
-                     self.logfile_enabled.get(), args[2], self.log_file_path),
+                      self.logfile_enabled.get(), args[2], self.log_file_path),
                 callback=self.task_callback
             )
             self.tasks.append(res)
@@ -234,7 +265,6 @@ class OcrApp(tk.Tk):
         self.progress_label.config(
             text=f"{self.processed_files}/{self.total_files} Dateien verarbeitet ({percent:.1f}%) - {elapsed_time:.1f}s vergangen"
         )
-
         if self.processed_files < self.total_files:
             self.after(1000, self.update_progress)
         else:
