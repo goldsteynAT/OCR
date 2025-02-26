@@ -1,68 +1,25 @@
 import os
-import sys
 import time
-import signal
 import multiprocessing
-import ocrmypdf
 import tkinter as tk
-from tkinter import filedialog, messagebox
-from tkinter import ttk
-import tkfilebrowser
+from tkinter import filedialog, messagebox, ttk
 import tkinter.font as tkfont
 from PIL import Image, ImageTk
+import tkfilebrowser
 
-# Globaler Lock für Log-Schreibzugriffe
-LOG_LOCK = None
-
-def process_pdf(input_path, output_path, use_internal_parallelism, logfile_enabled, pdf_folder, log_file_path):
-    """Führt OCR auf einer PDF aus und speichert das Ergebnis."""
-    try:
-        relative_path = os.path.relpath(input_path, pdf_folder)
-        print(f"📄 Processing: {relative_path}")
-
-        jobs_value = 4 if use_internal_parallelism else 1
-
-        ocrmypdf.ocr(
-            input_path, output_path,
-            deskew=True,
-            optimize=1,
-            force_ocr=True,
-            oversample=600,
-            language="deu+eng",
-            jobs=jobs_value
-        )
-        print(f"✅ Finished: {relative_path}")
-
-        if logfile_enabled:
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = f"{timestamp} - {relative_path}\n"
-            if LOG_LOCK:
-                with LOG_LOCK:
-                    with open(log_file_path, "a", encoding="utf-8") as logfile:
-                        logfile.write(log_entry)
-            else:
-                with open(log_file_path, "a", encoding="utf-8") as logfile:
-                    logfile.write(log_entry)
-
-    except Exception as e:
-        print(f"❌ Error processing {input_path}: {e}")
-
-    return os.path.basename(input_path)
-
-def init_worker(lock):
-    """Initializer für Worker-Prozesse: Setzt den globalen Lock und ignoriert SIGINT."""
-    global LOG_LOCK
-    LOG_LOCK = lock
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+from loghandler import LogHandler
+from ocr_processor import OCRProcessor
+from filemanager import FileManager
 
 class OcrApp(tk.Tk):
     def __init__(self):
-        tk.Tk.__init__(self)
+        super().__init__()
         self.title("batchOCR by Consertis GmbH")
-        self.icon_img = ImageTk.PhotoImage(Image.open(r"C:\Users\DanielEssl\OneDrive - Consertis GmbH\Desktop\PDF_OCR\OCR\consertis_ocr_logo.png"))
-        self.iconphoto(False, self.icon_img)
+        #self.icon_img = ImageTk.PhotoImage(Image.open(r"C:\Pfad\zur\deiner\Logo.png"))
+        #self.iconphoto(False, self.icon_img)
         self.geometry("1000x700")
         self.configure(bg="#f0f0f0")
+        
         self.source_folders = []
         self.target_folder = ""
         self.include_subfolders = tk.BooleanVar(value=True)
@@ -77,11 +34,11 @@ class OcrApp(tk.Tk):
         self.start_time = None
         self.log_file_path = ""
         self.last_folder = os.path.expanduser("~")
+        
         self.set_styles()
         self.create_widgets()
 
     def set_styles(self):
-        """Setzt ein modernes Theme und angepasste Fonts für ttk-Widgets."""
         style = ttk.Style(self)
         style.theme_use("xpnative")
         default_font = tkfont.nametofont("TkDefaultFont")
@@ -98,7 +55,6 @@ class OcrApp(tk.Tk):
         main_frame.pack(fill="both", expand=True)
         main_frame.columnconfigure(1, weight=1)
 
-        # Header
         header = ttk.Label(main_frame, text="batchOCR", font=("Segoe UI", 18, "bold"))
         header.grid(row=0, column=0, columnspan=3, pady=(0,20))
 
@@ -112,7 +68,6 @@ class OcrApp(tk.Tk):
         scrollbar = ttk.Scrollbar(source_frame, orient="vertical", command=self.source_listbox.yview)
         self.source_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.grid(row=0, column=1, sticky="ns")
-        # Buttons direkt unterhalb der Listbox, rechtsbündig und an der rechten Kante ausgerichtet
         src_btn_frame = ttk.Frame(main_frame)
         src_btn_frame.grid(row=3, column=0, columnspan=3, sticky="e", pady=5)
         ttk.Button(src_btn_frame, text="➕ Hinzufügen", command=self.browse_source).pack(side="left", padx=5)
@@ -125,10 +80,9 @@ class OcrApp(tk.Tk):
         target_frame.columnconfigure(0, weight=1)
         self.target_entry = ttk.Entry(target_frame, width=80)
         self.target_entry.grid(row=0, column=0, sticky="ew")
-        # Der Browse-Button soll rechts abschließen, also in derselben Zeile rechts neben dem Entry
         ttk.Button(target_frame, text="📂 Durchsuchen", command=self.browse_target).grid(row=0, column=1, padx=5)
 
-        # Optionen als Dropdown-Menü
+        # Optionen
         self.options_menubutton = ttk.Menubutton(main_frame, text="🔧 Optionen", direction="below")
         self.options_menu = tk.Menu(self.options_menubutton, tearoff=0)
         self.options_menubutton["menu"] = self.options_menu
@@ -152,7 +106,6 @@ class OcrApp(tk.Tk):
         self.stop_button.grid(row=0, column=1, padx=10)
 
     def browse_source(self):
-        """Ermöglicht die Auswahl mehrerer Quellordner via tkfilebrowser."""
         folders = tkfilebrowser.askopendirnames(
             title="Wählen Sie Quellordner aus",
             initialdir=self.last_folder,
@@ -165,13 +118,11 @@ class OcrApp(tk.Tk):
             self.last_folder = os.path.dirname(folders[-1])
 
     def remove_source_folder(self):
-        """Entfernt die ausgewählten Ordner aus der Listbox."""
         selected = self.source_listbox.curselection()
         for index in selected[::-1]:
             self.source_listbox.delete(index)
 
     def browse_target(self):
-        """Wählt einen Zielordner und speichert den zuletzt verwendeten Ordner."""
         folder = filedialog.askdirectory(title="Zielordner wählen", initialdir=self.last_folder)
         if folder:
             self.target_folder = folder
@@ -180,36 +131,11 @@ class OcrApp(tk.Tk):
             self.last_folder = folder
 
     def get_pdf_files(self):
-        """Sammelt alle PDF-Dateien aus den ausgewählten Quellordnern."""
-        pdf_files = []
         self.source_folders = self.source_listbox.get(0, tk.END)
-        for source_folder in self.source_folders:
-            if not os.path.isdir(source_folder):
-                continue
-            if self.include_subfolders.get():
-                for root, _, files in os.walk(source_folder):
-                    for file in files:
-                        if file.lower().endswith(".pdf"):
-                            input_path = os.path.join(root, file)
-                            rel = os.path.relpath(root, source_folder)
-                            base_folder = os.path.basename(source_folder)
-                            output_dir = os.path.join(self.target_folder, base_folder, rel)
-                            os.makedirs(output_dir, exist_ok=True)
-                            output_path = os.path.join(output_dir, file)
-                            pdf_files.append((input_path, output_path, source_folder))
-            else:
-                for file in os.listdir(source_folder):
-                    if file.lower().endswith(".pdf"):
-                        input_path = os.path.join(source_folder, file)
-                        base_folder = os.path.basename(source_folder)
-                        output_dir = os.path.join(self.target_folder, base_folder)
-                        os.makedirs(output_dir, exist_ok=True)
-                        output_path = os.path.join(output_dir, file)
-                        pdf_files.append((input_path, output_path, source_folder))
-        return pdf_files
+        fm = FileManager(self.source_folders, self.target_folder, self.include_subfolders.get())
+        return fm.get_pdf_files()
 
     def start_processing(self):
-        """Startet die OCR-Verarbeitung für alle ausgewählten Ordner."""
         self.source_folders = self.source_listbox.get(0, tk.END)
         if not self.source_folders or not self.target_folder:
             messagebox.showerror("Fehler", "Bitte wählen Sie mindestens einen Quellordner und einen Zielordner aus.")
@@ -234,18 +160,21 @@ class OcrApp(tk.Tk):
         self.manager = multiprocessing.Manager()
         log_lock = self.manager.Lock()
 
+        log_handler = LogHandler(self.log_file_path, self.logfile_enabled.get())
+        log_handler.set_lock(log_lock)
+
         self.pool = multiprocessing.Pool(
             processes=os.cpu_count(),
-            initializer=init_worker,
+            initializer=OCRProcessor.init_worker,
             initargs=(log_lock,)
         )
 
         self.tasks = []
         for args in files:
+            processor = OCRProcessor(self.use_internal_parallelism.get(), log_handler, args[2])
             res = self.pool.apply_async(
-                process_pdf,
-                args=(args[0], args[1], self.use_internal_parallelism.get(),
-                      self.logfile_enabled.get(), args[2], self.log_file_path),
+                processor.process_pdf,
+                args=(args[0], args[1]),
                 callback=self.task_callback
             )
             self.tasks.append(res)
@@ -253,7 +182,6 @@ class OcrApp(tk.Tk):
         self.update_progress()
 
     def stop_processing(self):
-        """Stoppt die Verarbeitung."""
         if self.pool:
             self.pool.terminate()
             self.pool.join()
@@ -264,7 +192,6 @@ class OcrApp(tk.Tk):
         messagebox.showinfo("Gestoppt", "Die Verarbeitung wurde gestoppt.")
 
     def update_progress(self):
-        """Aktualisiert die Fortschrittsanzeige."""
         elapsed_time = time.time() - self.start_time
         percent = (self.processed_files / self.total_files) * 100 if self.total_files > 0 else 0
         self.progress_label.config(
@@ -281,13 +208,10 @@ class OcrApp(tk.Tk):
             self.display_logfile()
 
     def task_callback(self, result):
-        """Callback für abgeschlossene Aufgaben."""
         self.processed_files += 1
         self.progress_bar["value"] = self.processed_files
 
     def display_logfile(self):
-        """Öffnet ein Fenster, in dem das Logfile als Tabelle angezeigt wird.
-        Es werden vier Spalten angezeigt: Datum, Uhrzeit, Dateipfad und Dateiname."""
         if not os.path.exists(self.log_file_path):
             messagebox.showinfo("Logfile", "Kein Logfile gefunden.")
             return
@@ -313,12 +237,10 @@ class OcrApp(tk.Tk):
                 line = line.strip()
                 if not line:
                     continue
-                # Erwartetes Format: "YYYY-MM-DD HH:MM:SS - relative_path"
                 parts = line.split(" - ", 1)
                 if len(parts) == 2:
                     timestamp = parts[0].strip()
                     relpath = parts[1].strip()
-                    # Splitte Timestamp in Datum und Uhrzeit
                     if " " in timestamp:
                         datum, uhrzeit = timestamp.split(" ", 1)
                     else:
