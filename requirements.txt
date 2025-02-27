@@ -1,0 +1,3 @@
+ocrmypdf>=15.0.0
+pillow>=9.0.0
+tkfilebrowser>=2.3.2

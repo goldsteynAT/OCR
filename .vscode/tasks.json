@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Combine all Python files",
+            "type": "shell",
+            "command": "Out-File -FilePath all.txt -Encoding utf8; Add-Content -Path all.txt -Value '## loghandler.py ##'; Get-Content loghandler.py | Add-Content -Path all.txt; Add-Content -Path all.txt -Value '\n\n## ocr_processor.py ##'; Get-Content ocr_processor.py | Add-Content -Path all.txt; Add-Content -Path all.txt -Value '\n\n## filemanager.py ##'; Get-Content filemanager.py | Add-Content -Path all.txt; Add-Content -Path all.txt -Value '\n\n## ocr_app.py ##'; Get-Content ocr_app.py | Add-Content -Path all.txt; Add-Content -Path all.txt -Value '\n\n## main.py ##'; Get-Content main.py | Add-Content -Path all.txt",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
