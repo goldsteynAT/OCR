@@ -15,18 +15,20 @@ class OcrApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("batchOCR by Consertis GmbH")
-        #self.icon_img = ImageTk.PhotoImage(Image.open(r"C:\Pfad\zur\deiner\Logo.png"))
-        #self.iconphoto(False, self.icon_img)
+        # Optional: Logo setzen (auskommentiert, falls kein Logo vorhanden)
+        # self.icon_img = ImageTk.PhotoImage(Image.open(r"Pfad\zum\Logo.png"))
+        # self.iconphoto(False, self.icon_img)
         self.geometry("1000x700")
         self.configure(bg="#f0f0f0")
         
-        self.source_folders = []
-        self.source_files = []
+        self.source_folders = []   # Für Ordner-Modus
+        self.source_files = []     # Für Einzelfile-Modus (falls unterstützt)
         self.target_folder = ""
+        self.same_as_source = tk.BooleanVar(value=False)  # Neu: Zielordner = Quellordner
         self.include_subfolders = tk.BooleanVar(value=True)
         self.use_internal_parallelism = tk.BooleanVar(value=True)
         self.logfile_enabled = tk.BooleanVar(value=True)
-        self.mode = tk.StringVar(value="folder_mode")  # Default to folder mode
+        self.mode = tk.StringVar(value="folder_mode")  # "folder_mode" oder "file_mode"
         
         self.total_files = 0
         self.processed_files = 0
@@ -38,6 +40,7 @@ class OcrApp(tk.Tk):
         self.log_file_path = ""
         self.last_folder = os.path.expanduser("~")
         
+        self.pdf_processor = OCRProcessor()  # Wird beim Einzelfile-/Ordner-Modus verwendet
         self.set_styles()
         self.create_widgets()
 
@@ -62,27 +65,13 @@ class OcrApp(tk.Tk):
         header = ttk.Label(main_frame, text="batchOCR", font=("Segoe UI", 18, "bold"))
         header.grid(row=0, column=0, columnspan=3, pady=(0,20))
 
-        # Mode selection (Folder or Files)
+        # Modus-Auswahl (optional, falls beide Modi unterstützt werden)
         mode_frame = ttk.LabelFrame(main_frame, text="Verarbeitungsmodus", padding=10)
-        mode_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 15))
+        mode_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0,15))
+        ttk.Radiobutton(mode_frame, text="Ordner verarbeiten", variable=self.mode, value="folder_mode", command=self.toggle_mode).pack(side="left", padx=20)
+        ttk.Radiobutton(mode_frame, text="Einzelne PDF-Dateien verarbeiten", variable=self.mode, value="file_mode", command=self.toggle_mode).pack(side="left", padx=20)
 
-        ttk.Radiobutton(
-            mode_frame, 
-            text="Ordner verarbeiten", 
-            variable=self.mode, 
-            value="folder_mode",
-            command=self.toggle_mode
-        ).pack(side="left", padx=20)
-        
-        ttk.Radiobutton(
-            mode_frame, 
-            text="Einzelne PDF-Dateien verarbeiten", 
-            variable=self.mode, 
-            value="file_mode",
-            command=self.toggle_mode
-        ).pack(side="left", padx=20)
-
-        # Source container frame (will contain both folder and file frames)
+        # Source container: Enthält sowohl den Ordner- als auch den File-Modus
         self.source_container = ttk.Frame(main_frame)
         self.source_container.grid(row=2, column=0, columnspan=3, sticky="ew")
         self.source_container.columnconfigure(0, weight=1)
@@ -91,87 +80,75 @@ class OcrApp(tk.Tk):
         self.folder_frame = ttk.Frame(self.source_container)
         self.folder_frame.grid(row=0, column=0, sticky="ew")
         self.folder_frame.columnconfigure(0, weight=1)
-        
         ttk.Label(self.folder_frame, text="📂 Quellordner:").grid(row=0, column=0, sticky="w")
         source_frame = ttk.Frame(self.folder_frame)
         source_frame.grid(row=1, column=0, sticky="ew")
         source_frame.columnconfigure(0, weight=1)
-        
         self.source_listbox = tk.Listbox(source_frame, height=6, width=80, selectmode=tk.EXTENDED, font=self.lb_font)
         self.source_listbox.grid(row=0, column=0, sticky="ew")
         scrollbar = ttk.Scrollbar(source_frame, orient="vertical", command=self.source_listbox.yview)
         self.source_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.grid(row=0, column=1, sticky="ns")
-        
         src_btn_frame = ttk.Frame(self.folder_frame)
         src_btn_frame.grid(row=2, column=0, sticky="e", pady=5)
         ttk.Button(src_btn_frame, text="➕ Hinzufügen", command=self.browse_source).pack(side="left", padx=5)
         ttk.Button(src_btn_frame, text="❌ Entfernen", command=self.remove_source_folder).pack(side="left", padx=5)
 
-        # File Selection Frame (initially hidden)
+        # File Selection Frame (für Einzel-PDFs)
         self.file_frame = ttk.Frame(self.source_container)
-        self.file_frame.columnconfigure(0, weight=1)
-        
-        ttk.Label(self.file_frame, text="📄 PDF-Dateien:").grid(row=0, column=0, sticky="w")
-        file_source_frame = ttk.Frame(self.file_frame)
-        file_source_frame.grid(row=1, column=0, sticky="ew")
-        file_source_frame.columnconfigure(0, weight=1)
-        
-        self.file_listbox = tk.Listbox(file_source_frame, height=6, width=80, selectmode=tk.EXTENDED, font=self.lb_font)
-        self.file_listbox.grid(row=0, column=0, sticky="ew")
-        file_scrollbar = ttk.Scrollbar(file_source_frame, orient="vertical", command=self.file_listbox.yview)
-        self.file_listbox.config(yscrollcommand=file_scrollbar.set)
-        file_scrollbar.grid(row=0, column=1, sticky="ns")
-        
-        file_btn_frame = ttk.Frame(self.file_frame)
-        file_btn_frame.grid(row=2, column=0, sticky="e", pady=5)
-        ttk.Button(file_btn_frame, text="➕ Dateien hinzufügen", command=self.browse_files).pack(side="left", padx=5)
-        ttk.Button(file_btn_frame, text="❌ Entfernen", command=self.remove_source_files).pack(side="left", padx=5)
+        # Anfangs im Folder-Modus anzeigen:
+        self.file_frame.grid_forget()
 
         # Zielordner-Bereich
-        ttk.Label(main_frame, text="🏁 Zielordner:").grid(row=4, column=0, sticky="w", pady=(20,0))
+        ttk.Label(main_frame, text="📁 Zielordner:").grid(row=3, column=0, sticky="w", pady=(20,0))
         target_frame = ttk.Frame(main_frame)
-        target_frame.grid(row=5, column=0, columnspan=3, sticky="ew")
+        target_frame.grid(row=4, column=0, columnspan=3, sticky="ew")
         target_frame.columnconfigure(0, weight=1)
         self.target_entry = ttk.Entry(target_frame, width=80)
         self.target_entry.grid(row=0, column=0, sticky="ew")
         ttk.Button(target_frame, text="📂 Durchsuchen", command=self.browse_target).grid(row=0, column=1, padx=5)
+        # Checkbutton: Zielordner = Quellordner
+        self.same_source_check = ttk.Checkbutton(target_frame, text="Zielordner = Quellordner", variable=self.same_as_source, command=self.toggle_target_entry)
+        self.same_source_check.grid(row=0, column=2, padx=10)
 
-        # Optionen
+        # Optionen Dropdown
         self.options_menubutton = ttk.Menubutton(main_frame, text="🔧 Optionen", direction="below")
         self.options_menu = tk.Menu(self.options_menubutton, tearoff=0)
         self.options_menubutton["menu"] = self.options_menu
         self.options_menu.add_checkbutton(label="Unterordner integrieren", variable=self.include_subfolders)
         self.options_menu.add_checkbutton(label="Interne Parallelisierung aktivieren", variable=self.use_internal_parallelism)
         self.options_menu.add_checkbutton(label="Logfile erstellen", variable=self.logfile_enabled)
-        self.options_menubutton.grid(row=6, column=0, columnspan=3, pady=5)
+        self.options_menubutton.grid(row=5, column=0, columnspan=3, pady=5)
 
         # Fortschrittsanzeige
         self.progress_label = ttk.Label(main_frame, text="Noch nicht gestartet")
-        self.progress_label.grid(row=8, column=0, columnspan=3, pady=20)
+        self.progress_label.grid(row=6, column=0, columnspan=3, pady=20)
         self.progress_bar = ttk.Progressbar(main_frame, orient="horizontal", length=800, mode="determinate", style="Horizontal.TProgressbar")
-        self.progress_bar.grid(row=9, column=0, columnspan=3, pady=10)
+        self.progress_bar.grid(row=7, column=0, columnspan=3, pady=10)
 
         # Steuerungsbuttons
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=10, column=0, columnspan=3, pady=20)
+        btn_frame.grid(row=8, column=0, columnspan=3, pady=20)
         self.start_button = ttk.Button(btn_frame, text="🚀 Start", command=self.start_processing)
         self.start_button.grid(row=0, column=0, padx=10)
         self.stop_button = ttk.Button(btn_frame, text="🛑 Stop", command=self.stop_processing, state="disabled")
         self.stop_button.grid(row=0, column=1, padx=10)
-        
-        # Initial mode setup
-        self.toggle_mode()
 
     def toggle_mode(self):
+        """Schaltet zwischen Ordner- und Einzel-PDF-Modus um."""
         if self.mode.get() == "folder_mode":
             self.file_frame.grid_forget()
             self.folder_frame.grid(row=0, column=0, sticky="ew")
-            self.options_menu.entryconfig(0, state=tk.NORMAL)  # Enable "Unterordner integrieren" option
-        else:  # file_mode
+        else:
             self.folder_frame.grid_forget()
             self.file_frame.grid(row=0, column=0, sticky="ew")
-            self.options_menu.entryconfig(0, state=tk.DISABLED)  # Disable "Unterordner integrieren" option
+
+    def toggle_target_entry(self):
+        """Deaktiviert oder aktiviert das Zielordner-Entry, wenn 'Zielordner = Quellordner' gewählt ist."""
+        if self.same_as_source.get():
+            self.target_entry.config(state="disabled")
+        else:
+            self.target_entry.config(state="normal")
 
     def browse_source(self):
         folders = tkfilebrowser.askopendirnames(
@@ -185,28 +162,10 @@ class OcrApp(tk.Tk):
                     self.source_listbox.insert(tk.END, folder)
             self.last_folder = os.path.dirname(folders[-1])
 
-    def browse_files(self):
-        files = filedialog.askopenfilenames(
-            title="Wählen Sie PDF-Dateien aus",
-            initialdir=self.last_folder,
-            filetypes=[("PDF-Dateien", "*.pdf")],
-            parent=self
-        )
-        if files:
-            for file in files:
-                if file not in self.file_listbox.get(0, tk.END):
-                    self.file_listbox.insert(tk.END, file)
-            self.last_folder = os.path.dirname(files[-1])
-
     def remove_source_folder(self):
         selected = self.source_listbox.curselection()
         for index in selected[::-1]:
             self.source_listbox.delete(index)
-
-    def remove_source_files(self):
-        selected = self.file_listbox.curselection()
-        for index in selected[::-1]:
-            self.file_listbox.delete(index)
 
     def browse_target(self):
         folder = filedialog.askdirectory(title="Zielordner wählen", initialdir=self.last_folder)
@@ -217,43 +176,16 @@ class OcrApp(tk.Tk):
             self.last_folder = folder
 
     def get_pdf_files(self):
-        if self.mode.get() == "folder_mode":
-            self.source_folders = self.source_listbox.get(0, tk.END)
-            fm = FileManager(self.source_folders, self.target_folder, self.include_subfolders.get())
-            return fm.get_pdf_files()
-        else:  # file_mode
-            pdf_files = []
-            self.source_files = self.file_listbox.get(0, tk.END)
-            
-            for input_path in self.source_files:
-                if not input_path.lower().endswith(".pdf"):
-                    continue
-                
-                filename = os.path.basename(input_path)
-                output_dir = self.target_folder
-                os.makedirs(output_dir, exist_ok=True)
-                output_path = os.path.join(output_dir, filename)
-                
-                # Using the directory of the file as pdf_folder for logging
-                file_dir = os.path.dirname(input_path)
-                pdf_files.append((input_path, output_path, file_dir))
-                
-            return pdf_files
+        """Erstellt den FileManager. Wird target_folder als None übergeben, falls 'Zielordner = Quellordner' aktiv ist."""
+        self.source_folders = self.source_listbox.get(0, tk.END)
+        target = None if self.same_as_source.get() else self.target_folder
+        fm = FileManager(self.source_folders, target, self.include_subfolders.get())
+        return fm.get_pdf_files()
 
     def start_processing(self):
-        if self.mode.get() == "folder_mode":
-            self.source_folders = self.source_listbox.get(0, tk.END)
-            if not self.source_folders:
-                messagebox.showerror("Fehler", "Bitte wählen Sie mindestens einen Quellordner aus.")
-                return
-        else:  # file_mode
-            self.source_files = self.file_listbox.get(0, tk.END)
-            if not self.source_files:
-                messagebox.showerror("Fehler", "Bitte wählen Sie mindestens eine PDF-Datei aus.")
-                return
-        
-        if not self.target_folder:
-            messagebox.showerror("Fehler", "Bitte wählen Sie einen Zielordner aus.")
+        self.source_folders = self.source_listbox.get(0, tk.END)
+        if not self.source_folders or (not self.same_as_source.get() and not self.target_folder):
+            messagebox.showerror("Fehler", "Bitte wählen Sie mindestens einen Quellordner und einen Zielordner aus.")
             return
 
         files = self.get_pdf_files()
@@ -269,9 +201,13 @@ class OcrApp(tk.Tk):
 
         self.start_button.config(state="disabled")
         self.stop_button.config(state="normal")
-        self.processing = True
 
-        self.log_file_path = os.path.join(self.target_folder, "ocr_log.txt")
+        # Falls "Zielordner = Quellordner" aktiv ist, log_file_path wird im ersten Quellordner abgelegt
+        if self.same_as_source.get():
+            self.log_file_path = os.path.join(self.source_folders[0], "ocr_log.txt")
+        else:
+            self.log_file_path = os.path.join(self.target_folder, "ocr_log.txt")
+
         self.manager = multiprocessing.Manager()
         log_lock = self.manager.Lock()
 
@@ -317,7 +253,6 @@ class OcrApp(tk.Tk):
         else:
             self.pool.close()
             self.pool.join()
-            self.processing = False
             self.start_button.config(state="normal")
             self.stop_button.config(state="disabled")
             self.display_logfile()
@@ -364,7 +299,6 @@ class OcrApp(tk.Tk):
                     tree.insert("", tk.END, values=(datum, uhrzeit, relpath, filename))
                 else:
                     tree.insert("", tk.END, values=(line, "", "", ""))
-
         scrollbar = ttk.Scrollbar(log_win, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")

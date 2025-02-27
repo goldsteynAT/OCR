@@ -12,10 +12,11 @@ class OCRProcessor:
     def process_pdf(self, input_path, output_path):
         try:
             relative_path = os.path.relpath(input_path, self.pdf_folder)
-            print(f"📄 Processing: {relative_path}")
+            print(f"🔄 Processing: {relative_path}")
 
             jobs_value = 4 if self.use_internal_parallelism else 1
-
+            
+            # Process the file with OCR
             ocrmypdf.ocr(
                 input_path, output_path,
                 deskew=True,
@@ -25,7 +26,14 @@ class OCRProcessor:
                 language="deu+eng",
                 jobs=jobs_value
             )
-            print(f"✅ Finished: {relative_path}")
+            
+            # If input and output are in the same directory (different filenames)
+            if os.path.dirname(input_path) == os.path.dirname(output_path) and os.path.basename(input_path) != os.path.basename(output_path):
+                # Rename the output file to replace the original
+                os.replace(output_path, input_path)
+                print(f"✅ Finished and replaced original: {relative_path}")
+            else:
+                print(f"✅ Finished: {relative_path}")
 
             if self.logfile_handler:
                 self.logfile_handler.write_log(input_path, self.pdf_folder)
@@ -37,7 +45,7 @@ class OCRProcessor:
 
     @staticmethod
     def init_worker(lock):
-        # Initialisierer für Worker-Prozesse: Setzt den globalen Lock und ignoriert SIGINT.
+        # Initializer for worker processes: Sets the global lock and ignores SIGINT
         global LOG_LOCK
         LOG_LOCK = lock
         signal.signal(signal.SIGINT, signal.SIG_IGN)
